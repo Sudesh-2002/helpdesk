@@ -133,3 +133,54 @@ export async function addMessage(req, res) {
   await message.populate("sender", "name role");
   res.status(201).json({ message });
 }
+
+const statusSchema = z.object({ status: z.enum(STATUSES) });
+
+export async function assignTicket(req, res) {
+  const { assigneeId } = req.body ?? {};
+  let target = req.user;
+
+  // only admins can assign to someone else
+  if (assigneeId) {
+    if (req.user.role !== "admin")
+      return res.status(403).json({ message: "Only admins can assign to another agent" });
+    if (!mongoose.isValidObjectId(assigneeId))
+      return res.status(400).json({ message: "Invalid assignee id" });
+
+    target = await User.findOne({ _id: assigneeId, role: { $in: ["agent", "admin"] } });
+    if (!target) return res.status(400).json({ message: "Assignee must be an agent or admin" });
+  }
+
+  // Atomic claim: for agents the update only matches if nobody has it yet,
+  // so two agents clicking "claim" at once can't both win.
+  const filter = { _id: req.ticket._id };
+  if (req.user.role !== "admin") filter.assignee = null;
+
+  const ticket = await Ticket.findOneAndUpdate(filter, { assignee: target._id }, { new: true });
+  if (!ticket) return res.status(409).json({ message: "Ticket is already assigned" });
+
+  await logEvent(ticket._id, req.user._id, "assigned", { to: target._id });
+  res.json({ ticket });
+}
+
+export async function updateStatus(req, res) {
+  const parsed = statusSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid status" });
+
+  const { status } = parsed.data;
+  const ticket = req.ticket;
+
+  if (!isStaff(req.user) && status !== "closed")
+    return res.status(403).json({ message: "Forbidden" });
+
+  if (ticket.status === status) return res.json({ ticket });
+
+  const from = ticket.status;
+  ticket.status = status;
+  if (status === "resolved") ticket.resolvedAt = new Date();
+  if (status === "open") ticket.resolvedAt = undefined;
+  await ticket.save();
+
+  await logEvent(ticket._id, req.user._id, "status_changed", { from, to: status });
+  res.json({ ticket });
+}
