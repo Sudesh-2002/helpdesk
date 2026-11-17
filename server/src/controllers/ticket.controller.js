@@ -83,3 +83,53 @@ export async function getTicket(req, res) {
 
   res.json({ ticket, messages });
 }
+
+const messageSchema = z.object({
+  body: z.string().min(1).max(5000),
+  isInternal: z.boolean().optional(),
+});
+
+export async function addMessage(req, res) {
+  const parsed = messageSchema.safeParse(req.body);
+  if (!parsed.success)
+    return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
+
+  const ticket = req.ticket;
+  if (ticket.status === "closed")
+    return res.status(409).json({ message: "Ticket is closed" });
+
+  const staff = isStaff(req.user);
+  const isInternal = staff && parsed.data.isInternal === true; // customers can never post internal notes
+
+  const message = await Message.create({
+    ticket: ticket._id,
+    sender: req.user._id,
+    body: parsed.data.body,
+    isInternal,
+  });
+
+  const set = { lastMessageAt: new Date() };
+  const unset = {};
+  let newStatus = null;
+
+  if (staff && !isInternal) {
+    if (!ticket.firstRespondedAt) set.firstRespondedAt = new Date();
+    if (ticket.status === "open") newStatus = "pending"; // ball is in the customer's court
+  } else if (!staff && ["pending", "resolved"].includes(ticket.status)) {
+    newStatus = "open"; // customer replied, so it needs attention again
+    if (ticket.status === "resolved") unset.resolvedAt = "";
+  }
+
+  if (newStatus) set.status = newStatus;
+
+  await Ticket.updateOne(
+    { _id: ticket._id },
+    { $set: set, ...(Object.keys(unset).length && { $unset: unset }) }
+  );
+
+  if (newStatus)
+    await logEvent(ticket._id, req.user._id, "status_changed", { from: ticket.status, to: newStatus });
+
+  await message.populate("sender", "name role");
+  res.status(201).json({ message });
+}

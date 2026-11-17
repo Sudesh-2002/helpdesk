@@ -10,5 +10,6 @@ router.use(protect);
 router.post("/", authorize("customer"), createTicket);
 router.get("/", listTickets);
 router.get("/:id", loadTicket, getTicket);
+router.post("/:id/messages", loadTicket, addMessage);
 
 export default router;
