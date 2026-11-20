@@ -6,6 +6,7 @@ import { firstResponseDueAt } from "../utils/sla.js";
 import { logEvent } from "../utils/events.js";
 import { isStaff } from "../policies/ticket.policy.js";
 import mongoose from "mongoose";
+import { emitMessage, emitTicketCreated, emitTicketUpdate } from "../socket/emitters.js";
 
 const createSchema = z.object({
   subject: z.string().min(3).max(150),
@@ -36,6 +37,8 @@ export async function createTicket(req, res) {
   });
   await Message.create({ ticket: ticket._id, sender: req.user._id, body });
   await logEvent(ticket._id, req.user._id, "created", { priority });
+
+  emitTicketCreated(ticket._id).catch(console.error);
 
   res.status(201).json({ ticket });
 }
@@ -99,7 +102,7 @@ export async function addMessage(req, res) {
     return res.status(409).json({ message: "Ticket is closed" });
 
   const staff = isStaff(req.user);
-  const isInternal = staff && parsed.data.isInternal === true; // customers can never post internal notes
+  const isInternal = staff && parsed.data.isInternal === true;
 
   const message = await Message.create({
     ticket: ticket._id,
@@ -131,6 +134,10 @@ export async function addMessage(req, res) {
     await logEvent(ticket._id, req.user._id, "status_changed", { from: ticket.status, to: newStatus });
 
   await message.populate("sender", "name role");
+
+  emitMessage(message);
+  emitTicketUpdate(ticket._id, { staffOnly: message.isInternal }).catch(console.error);
+
   res.status(201).json({ message });
 }
 
@@ -151,8 +158,6 @@ export async function assignTicket(req, res) {
     if (!target) return res.status(400).json({ message: "Assignee must be an agent or admin" });
   }
 
-  // Atomic claim: for agents the update only matches if nobody has it yet,
-  // so two agents clicking "claim" at once can't both win.
   const filter = { _id: req.ticket._id };
   if (req.user.role !== "admin") filter.assignee = null;
 
@@ -160,6 +165,8 @@ export async function assignTicket(req, res) {
   if (!ticket) return res.status(409).json({ message: "Ticket is already assigned" });
 
   await logEvent(ticket._id, req.user._id, "assigned", { to: target._id });
+
+  emitTicketUpdate(ticket._id).catch(console.error);
   res.json({ ticket });
 }
 
@@ -182,5 +189,7 @@ export async function updateStatus(req, res) {
   await ticket.save();
 
   await logEvent(ticket._id, req.user._id, "status_changed", { from, to: status });
+
+  emitTicketUpdate(ticket._id).catch(console.error);
   res.json({ ticket });
 }
