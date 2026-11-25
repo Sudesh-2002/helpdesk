@@ -13,6 +13,7 @@ const ticketSchema = new mongoose.Schema(
     firstResponseDueAt: Date,
     firstRespondedAt: Date,
     resolvedAt: Date,
+    slaBreachedAt: { type: Date, default: null },
     lastMessageAt: { type: Date, default: Date.now },
   },
   { timestamps: true }
