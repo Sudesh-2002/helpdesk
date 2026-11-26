@@ -7,6 +7,7 @@ import { logEvent } from "../utils/events.js";
 import { isStaff } from "../policies/ticket.policy.js";
 import mongoose from "mongoose";
 import { emitMessage, emitTicketCreated, emitTicketUpdate } from "../socket/emitters.js";
+import { notify } from "../services/notify.js";
 
 const createSchema = z.object({
   subject: z.string().min(3).max(150),
@@ -138,6 +139,24 @@ export async function addMessage(req, res) {
   emitMessage(message);
   emitTicketUpdate(ticket._id, { staffOnly: message.isInternal }).catch(console.error);
 
+  if (!isInternal) {
+    if (staff) {
+      notify({
+        user: ticket.customer,
+        type: "reply",
+        ticket,
+        text: `${req.user.name} replied to "${ticket.subject}"`,
+      }).catch(console.error);
+    } else if (ticket.assignee) {
+      notify({
+        user: ticket.assignee,
+        type: "reply",
+        ticket,
+        text: `${req.user.name} replied on "${ticket.subject}"`,
+      }).catch(console.error);
+    }
+  }
+
   res.status(201).json({ message });
 }
 
@@ -166,6 +185,15 @@ export async function assignTicket(req, res) {
 
   await logEvent(ticket._id, req.user._id, "assigned", { to: target._id });
 
+  if (!target._id.equals(req.user._id)) {
+    notify({
+      user: target._id,
+      type: "assigned",
+      ticket,
+      text: `${req.user.name} assigned you "${ticket.subject}"`,
+    }).catch(console.error);
+  }
+
   emitTicketUpdate(ticket._id).catch(console.error);
   res.json({ ticket });
 }
@@ -189,6 +217,15 @@ export async function updateStatus(req, res) {
   await ticket.save();
 
   await logEvent(ticket._id, req.user._id, "status_changed", { from, to: status });
+
+  if (isStaff(req.user) && ["resolved", "closed"].includes(status)) {
+    notify({
+      user: ticket.customer,
+      type: "status",
+      ticket,
+      text: `Your ticket "${ticket.subject}" was marked ${status}`,
+    }).catch(console.error);
+  }
 
   emitTicketUpdate(ticket._id).catch(console.error);
   res.json({ ticket });
