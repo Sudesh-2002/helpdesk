@@ -1,6 +1,7 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useSocketSync } from "../hooks/useSocketSync";
+import NotificationBell from "./NotificationBell";
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -13,6 +14,7 @@ export default function Layout() {
         <div className="container bar">
           <Link to="/" className="brand">Helpdesk</Link>
           <div className="right">
+            <NotificationBell />
             <span>{user.name} <em className="muted">({user.role})</em></span>
             <button
               className="btn ghost"

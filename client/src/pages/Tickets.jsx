@@ -75,8 +75,12 @@ export default function Tickets() {
             <tbody>
               {data.tickets.map((t) => (
                 <tr key={t._id}>
-                  <td><Link to={`/tickets/${t._id}`}>{t.subject}</Link></td>
-                  {staff && <td>{t.customer?.name}</td>}
+                  <td>
+                    <Link to={`/tickets/${t._id}`}>{t.subject}</Link>
+                    {staff && t.slaBreachedAt && !t.firstRespondedAt && (
+                      <span className="badge urgent" style={{ marginLeft: ".5rem" }}>SLA breached</span>
+                    )}
+                  </td>
                   <td><StatusBadge value={t.status} /></td>
                   <td><StatusBadge value={t.priority} /></td>
                   <td>{t.assignee?.name || <span className="muted">Unassigned</span>}</td>
