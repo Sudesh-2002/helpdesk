@@ -19,6 +19,7 @@ export function initSocket(httpServer) {
     try {
       const { token } = parse(socket.handshake.headers.cookie || "");
       if (!token) return next(new Error("unauthorized"));
+      if (!user || !user.active) return next(new Error("unauthorized"));
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id);
@@ -34,7 +35,7 @@ export function initSocket(httpServer) {
   io.on("connection", (socket) => {
     const user = socket.data.user;
 
-    socket.join(rooms.user(user._id)); // personal updates for the ticket list
+    socket.join(rooms.user(user._id));
     if (isStaff(user)) socket.join(rooms.staff);
 
     socket.on("ticket:join", async (ticketId, ack = () => {}) => {
@@ -62,7 +63,7 @@ export function initSocket(httpServer) {
 
     socket.on("typing", ({ ticketId, isTyping } = {}) => {
       const room = rooms.ticket(ticketId);
-      if (!socket.rooms.has(room)) return; // must have passed the join check
+      if (!socket.rooms.has(room)) return;
       socket.to(room).emit("typing", {
         ticketId: String(ticketId),
         user: { id: user._id, name: user.name },

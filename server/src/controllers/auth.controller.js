@@ -34,6 +34,8 @@ export async function login(req, res) {
   if (!user || !(await user.comparePassword(parsed.data.password)))
     return res.status(401).json({ message: "Invalid credentials" });
 
+  if (!user.active) return res.status(403).json({ message: "Account is disabled" });
+
   setAuthCookie(res, signToken(user));
   res.json({ user: publicUser(user) });
 }
