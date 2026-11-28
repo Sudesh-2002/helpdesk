@@ -20,5 +20,6 @@ const ticketSchema = new mongoose.Schema(
 );
 
 ticketSchema.index({ status: 1, priority: 1, lastMessageAt: -1 });
+ticketSchema.index({ createdAt: -1 });
 
 export default mongoose.model("Ticket", ticketSchema);
