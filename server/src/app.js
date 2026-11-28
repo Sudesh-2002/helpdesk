@@ -7,6 +7,7 @@ import authRoutes from "./routes/auth.routes.js";
 import { notFound, errorHandler } from "./middleware/error.js";
 import ticketRoutes from "./routes/ticket.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 
 const app = express();
 
@@ -24,6 +25,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/tickets", ticketRoutes);
 
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/admin", adminRoutes);
+
 app.use(notFound);
 app.use(errorHandler);
 
